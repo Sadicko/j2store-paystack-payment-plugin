@@ -1,4 +1,4 @@
-<extension type="plugin" version="3.9" group="j2store" method="upgrade">
+<extension version="3.9" type="plugin" method="upgrade" group="j2store">
     <name>Paystack Payment - J2Store</name>
     <author>Sadick Sessah-Odai</author>
     <creationDate>June 2024</creationDate>
@@ -8,46 +8,31 @@
     <license>GNU/GPL</license>
     <version>1.0.0</version>
     <description>Paystack payment plugin for J2Store</description>
+
     <files>
         <filename plugin="payment_paystack">payment_paystack.php</filename>
         <filename>index.html</filename>
+        <folder>payment_paystack</folder>
+        <filename>language/en-GB/en-GB.plg_j2store_payment_paystack.ini</filename>
+        <filename>language/en-GB/en-GB.plg_j2store_payment_paystack.sys.ini</filename>
     </files>
+
     <config>
         <fields name="params">
             <fieldset name="basic">
-                <field name="display_name" type="text" size="30" default="" label="j2store_plugin_display_name" description="j2store_plugin_display_name_desc"/>
-                <field name="display_image" type="media" label="Business Logo" description="j2store_plugin_display_image_desc"/>
-
-                <field type="spacer" />
-
-                <field name="public_key" type="text" label="Public Key" description="Your Paystack Public Key" />
-                <field name="secret_key" type="text" label="Secret Key" description="Your Paystack Secret Key" />
+                <field name="display_name" type="text" size="30" default="Paystack" label="Display Name" description="Display name for the payment method"/>
+                <field name="display_image" type="media" label="Business Logo" description="Upload a business logo"/>
+                <field type="spacer"/>
+                <field name="public_key" type="text" label="Public Key" description="Your Paystack Public Key"/>
+                <field name="secret_key" type="text" label="Secret Key" description="Your Paystack Secret Key"/>
                 <field name="live_mode" type="radio" label="Live Mode" description="Select whether to use live or test mode" default="0">
                     <option value="0">Test</option>
                     <option value="1">Live</option>
                 </field>
-                <field name="currency" type="list" label="Currency" description="Select the currency">
-                    <option value="GHS">Ghanaian Cedi (GHS)</option>
-                    <option value="NGN">Nigerian Naira (NGN)</option>
-                    <option value="KES">Kenyan Shilling (KES)</option>
-                    <option value="ZAR">South African Rand (ZAR)</option>
-                    <option value="UGX">Ugandan Shilling (UGX)</option>
-                    <option value="RWF">Rwandan Franc (RWF)</option>
-                    <option value="USD">US Dollar (USD)</option>
-                    <option value="GBP">British Pound (GBP)</option>
-                </field>
-
-                <field type="spacer" />
-                <field name="onselection" type="textarea" cols="10" rows="5" default="" label="j2store_on_selection_label" description="j2store_on_selection_desc"/>
-                <field name="onbeforepayment" type="textarea" cols="10" rows="5" default="" label="j2store_on_before_payment_label" description="j2store_on_before_payment_desc"/>
-                <field name="onafterpayment" type="textarea" cols="10" rows="5" default="" label="j2store_on_after_payment_label" description="j2store_on_after_payment_desc"/>
-                <field name="onerrorpayment" type="textarea" cols="10" rows="5" default="" label="j2store_on_error_payment_label" description="j2store_on_error_payment_desc"/>
-                <field name="oncancelpayment" type="textarea" cols="10" rows="5" default="" label="j2store_on_cancel_payment_label" description="j2store_on_cancel_payment_desc"/>
-
-                <field type="spacer" />
-
-                <field name="button_text" type="text" size="50" default="J2STORE_PLACE_ORDER" label="j2store_button_text_label" description="j2store_button_text_desc" />
-
+                <field type="spacer"/>
+                <field name="button_text" type="text" size="50" default="Place Order" label="Button Text" description="Text to display on the place order button"/>
+                <field name="articleid" type="text" size="10" default="" label="Thank You Article ID" description="ID of the article to display for thank you message"/>
+                <field name="geozone_id" type="geozonelist" default="" label="Geozone" description="Geozone for the payment method" addfieldpath="/administrator/components/com_j2store/models/fields"/>
             </fieldset>
         </fields>
     </config>

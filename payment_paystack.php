@@ -1,75 +1,121 @@
 <?php
 defined('_JEXEC') or die('Restricted access');
 
-class plgJ2StorePayment_Paystack extends JPlugin {
+require_once(JPATH_ADMINISTRATOR . '/components/com_j2store/library/plugins/payment.php');
 
-    public function __construct(& $subject, $config) {
+class plgJ2StorePayment_paystack extends J2StorePaymentPlugin
+{
+    var $_element = 'payment_paystack';
+
+    function __construct(&$subject, $config)
+    {
         parent::__construct($subject, $config);
-        $this->loadLanguage();
+        $this->loadLanguage('', JPATH_ADMINISTRATOR);
     }
 
-    public function onJ2StoreGetPaymentOptions($element, $order) {
-        if ($element->element == 'payment_paystack') {
-            $html = '<input type="radio" name="payment_method" value="payment_paystack" id="payment_paystack" />';
-            $html .= '<label for="payment_paystack">Paystack</label>';
-            return $html;
+    function onJ2StoreCalculateFees($order)
+    {
+        $success = false;
+        if (isset($order->j2store_payment_method) && $order->j2store_payment_method == $this->_element) {
+            $success = true;
         }
+        return array($success, array());
     }
 
-    public function onJ2StoreProcessPayment($order) {
+    function _prePayment($data)
+    {
+        $vars = new JObject();
         $app = JFactory::getApplication();
-        $public_key = $this->params->get('public_key');
-        $secret_key = $this->params->get('secret_key');
-        $live_mode = $this->params->get('live_mode');
-        $currency = $this->params->get('currency', 'GHS'); // Default to GHS if not set
-        $order_id = $order->get('order_id');
-        $amount = $order->get('order_total') * 100; // Convert to smallest currency unit
-        $callback_url = JURI::root() . 'index.php?option=com_j2store&view=checkout&task=confirmPayment&order_id=' . $order_id;
+        $input = $app->input;
 
-        $html = '<script src="https://js.paystack.co/v1/inline.js"></script>';
-        $html .= '<button type="button" onclick="payWithPaystack()">Pay Now</button>';
-        $html .= '<script>
-            function payWithPaystack() {
-                var handler = PaystackPop.setup({
-                    key: "' . $public_key . '",
-                    email: "' . $order->get('user_email') . '",
-                    amount: ' . $amount . ',
-                    currency: "' . $currency . '",
-                    ref: "' . $order_id . '",
-                    callback: function(response) {
-                        window.location.href = "' . $callback_url . '&reference=" + response.reference;
-                    },
-                    onClose: function() {
-                        alert("Payment window closed");
-                    }
-                });
-                handler.openIframe();
-            }
-        </script>';
-        return $html;
+        $vars->order_id = $data['order_id'];
+        $vars->user_email = isset($data['user_email']) ? $data['user_email'] : $this->getUserEmail($data['order_id']);
+        $vars->amount = $data['orderpayment_amount'];
+        $vars->currency_code = isset($data['currency_code']) ? $data['currency_code'] : $this->getCurrencyCode($data['order_id']);
+
+        // Debugging log
+//        JLog::add('Currency code being sent: ' . $vars->currency_code, JLog::INFO, 'payment_paystack');
+//        JLog::add('User email: ' . $vars->user_email, JLog::INFO, 'payment_paystack');
+
+        $vars->public_key = $this->params->get('public_key');
+        $vars->callback_url = JRoute::_(JURI::root() . "index.php?option=com_j2store&view=checkout&task=confirmPayment&orderpayment_type=" . $this->_element . "&order_id=" . $data['order_id'], false);
+
+        return $this->_getLayout('prepayment', $vars);
     }
 
-    public function onJ2StoreConfirmPayment($order) {
+    function _postPayment($data)
+    {
         $app = JFactory::getApplication();
-        $reference = $app->input->get('reference', '', 'string');
-        $secret_key = $this->params->get('secret_key');
-        $order_id = $order->get('order_id');
+        $input = $app->input;
+        $order_id = $input->getString('order_id');
+        $transaction_id = $input->getString('reference'); // Paystack returns 'reference'
 
-        // Verify the transaction
+        // Debugging log
+        JLog::add('Order ID: ' . $order_id, JLog::INFO, 'payment_paystack');
+        JLog::add('Transaction ID: ' . $transaction_id, JLog::INFO, 'payment_paystack');
+
+        $order = F0FTable::getAnInstance('Order', 'J2StoreTable')->getClone();
+        $order->load(array('order_id' => $order_id));
+
+        $paystack_secret_key = $this->params->get('secret_key');
+        $payment_status = $this->_verifyTransaction($transaction_id, $paystack_secret_key);
+
+        if ($payment_status == 'success') {
+            $order->transaction_status = 'C';
+            $order->order_state = 'C';
+            $order->transaction_id = $transaction_id;
+            $order->store();
+
+            // Update order status
+            $orderpayment = F0FTable::getAnInstance('Orderpayment', 'J2StoreTable')->getClone();
+            $orderpayment->load(array('order_id' => $order_id));
+            $orderpayment->order_state = 'payment_received';
+            $orderpayment->payment_status = 'C';
+            $orderpayment->transaction_id = $transaction_id;
+            $orderpayment->save();
+        } else {
+            $order->transaction_status = 'F';
+            $order->order_state = 'F';
+            $order->transaction_id = $transaction_id;
+            $order->store();
+        }
+
+        $app->redirect(JRoute::_('index.php?option=com_j2store&view=checkout', false));
+    }
+
+    function _verifyTransaction($transaction_id, $secret_key)
+    {
+        $url = "https://api.paystack.co/transaction/verify/" . $transaction_id;
+        $headers = array(
+            "Authorization: Bearer " . $secret_key,
+            "Content-Type: application/json"
+        );
+
         $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, 'https://api.paystack.co/transaction/verify/' . $reference);
+        curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Authorization: Bearer ' . $secret_key]);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         $response = curl_exec($ch);
         curl_close($ch);
-        $result = json_decode($response);
 
-        if ($result->status && $result->data->status == 'success') {
-            $order->payment_complete();
-            $app->enqueueMessage('Payment successful', 'message');
-        } else {
-            $order->payment_failed();
-            $app->enqueueMessage('Payment failed', 'error');
+        $result = json_decode($response);
+        if ($result && $result->data && $result->data->status == 'success') {
+            return 'success';
         }
+        return 'failed';
+    }
+
+    protected function getUserEmail($order_id)
+    {
+        $order = F0FTable::getAnInstance('Order', 'J2StoreTable')->getClone();
+        $order->load(array('order_id' => $order_id));
+        return $order->user_email;
+    }
+
+    protected function getCurrencyCode($order_id)
+    {
+        $order = F0FTable::getAnInstance('Order', 'J2StoreTable')->getClone();
+        $order->load(array('order_id' => $order_id));
+        return $order->currency_code;
     }
 }
